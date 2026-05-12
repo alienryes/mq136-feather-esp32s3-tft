@@ -139,8 +139,9 @@ The 240×135 IPS TFT is divided into seven zones:
 ┌─────────────────────────────────────────┐
 │  MQ-136  H2S              12:34:56      │  Title + NTP clock
 │─────────────────────────────────────────│
-│  14823                      D:+1823     │  Raw EWMA (large) + delta from baseline
-│  Avg:13201                  -67dBm      │  Hourly average + WiFi RSSI
+│  14823                      Δ:+1823     │  Raw EWMA (large) + delta from baseline
+│  raw ADC                                │  Caption for raw value
+│  Avg:13201                  -65dBm      │  Hourly average + WiFi RSSI
 │─────────────────────────────────────────│
 │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
 │  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │  Hourly sparkline (12 columns)
@@ -153,8 +154,8 @@ The 240×135 IPS TFT is divided into seven zones:
 ### Raw ADC value
 Large (scale=2) text, colour-coded by status: green = OK, amber = warming up or publishing, red = MQTT error.
 
-### Delta (D:)
-Difference between current reading and the calibrated clean-air baseline. Green if below baseline, amber if above by less than `trend_threshold`, red if above by more. Shows `D: --` until calibrated.
+### Delta (Δ:)
+Difference between current reading and the calibrated clean-air baseline. Green if below baseline, amber if above by less than `trend_threshold`, red if above by more. Shows `Δ: --` until calibrated.
 
 ### Hourly average
 Mean of the last 60 minutes of readings. Appears from the second publish cycle onwards. Grey until data is available.

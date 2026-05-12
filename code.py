@@ -589,7 +589,7 @@ _lbl_raw = label.Label(
 )
 splash.append(_lbl_raw)
 _lbl_delta = label.Label(
-    terminalio.FONT, text="D: ------", color=COL_GREY, x=148, y=38,
+    terminalio.FONT, text="\u0394: ------", color=COL_GREY, x=148, y=38,
 )
 splash.append(_lbl_delta)
 
@@ -639,10 +639,10 @@ def draw_display(raw, status, trend="---", show_prefix=True,
     # Delta from baseline
     if _baseline_valid:
         d = raw - _baseline
-        _lbl_delta.text = "D:" + ("+" if d >= 0 else "") + str(d)
+        _lbl_delta.text = "\u0394:" + ("+" if d >= 0 else "") + str(d)
         _lbl_delta.color = _pal[4 if d > trend_threshold else (3 if d > 0 else 2)]
     else:
-        _lbl_delta.text = "D: --"
+        _lbl_delta.text = "\u0394: --"
         _lbl_delta.color = _pal[6]
 
     # Hourly average

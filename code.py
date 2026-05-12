@@ -137,7 +137,7 @@ IDENTIFY_FLASHES = 6     # number of display on/off cycles for identify
 TFT_WIDTH = 240
 TFT_HEIGHT = 135
 SPARK_X = 4             # sparkline left margin
-SPARK_Y = 68            # sparkline top (just below divider line 2)
+SPARK_Y = 72            # sparkline top (just below divider line 2)
 SPARK_W = 232           # sparkline pixel width
 SPARK_H = 44            # sparkline pixel height (down to y=112, leaving label row)
 SPARK_COLS = 12         # one column per hourly reading slot
@@ -602,6 +602,9 @@ _lbl_raw = label.Label(
     terminalio.FONT, text="------", color=COL_BLUE, x=4, y=38, scale=2,
 )
 splash.append(_lbl_raw)
+splash.append(label.Label(
+    terminalio.FONT, text="raw ADC", color=COL_GREY, x=4, y=50,
+))
 _lbl_delta = label.Label(
     _FONT_DELTA, text="\u0394: ------", color=COL_GREY, x=148, y=38,
 )
@@ -609,17 +612,17 @@ splash.append(_lbl_delta)
 
 # Hourly average (left) + RSSI (right)
 _lbl_avg = label.Label(
-    terminalio.FONT, text="Avg: -----", color=COL_GREY, x=4, y=55,
+    terminalio.FONT, text="Avg: -----", color=COL_GREY, x=4, y=60,
 )
 splash.append(_lbl_avg)
 _lbl_rssi = label.Label(
-    terminalio.FONT, text="----dBm", color=COL_GREY, x=168, y=55,
+    terminalio.FONT, text="----dBm", color=COL_GREY, x=168, y=60,
 )
 splash.append(_lbl_rssi)
 
 # Divider line 2
 splash.append(displayio.TileGrid(
-    _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=66,
+    _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=70,
 ))
 
 # Sparkline bitmap (replaces bar chart)

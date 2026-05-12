@@ -1,0 +1,5 @@
+[flake8]
+max-line-length = 100
+# E402: supervisor.runtime.autoreload must be set before other imports in CircuitPython
+per-file-ignores =
+    code.py: E402

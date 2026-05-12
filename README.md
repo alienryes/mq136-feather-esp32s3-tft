@@ -72,10 +72,19 @@ Copy the following libraries from the [Adafruit CircuitPython Library Bundle](ht
 |---------|---------|
 | `adafruit_st7789` | ST7789 TFT display driver |
 | `adafruit_display_text` | Text labels for displayio |
+| `adafruit_bitmap_font` | BDF font loader (for Δ symbol) |
 | `adafruit_minimqtt` | MQTT client |
 | `adafruit_ntp` | NTP time sync |
 | `adafruit_ticks` | Required by adafruit_minimqtt in CP10 |
 | `neopixel` | On-board NeoPixel status LED |
+
+A font file is also required — copy to `/fonts` on `CIRCUITPY`:
+
+| File | Source |
+|------|--------|
+| `fonts/NotoSans-Regular-12.bdf` | [Adafruit CircuitPython Bitmap Font examples](https://github.com/adafruit/Adafruit_CircuitPython_Bitmap_Font/tree/main/examples/fonts) |
+
+> The font is used only for the Δ delta label. If the file is missing the firmware falls back to `terminalio.FONT` automatically — `D:` will be displayed instead of `Δ:`.
 
 ---
 

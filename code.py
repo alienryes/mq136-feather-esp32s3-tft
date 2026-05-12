@@ -33,9 +33,15 @@
 # Required CircuitPython libraries (copy to /lib on CIRCUITPY):
 #   adafruit_st7789
 #   adafruit_display_text
-#   adafruit_connection_manager
+#   adafruit_bitmap_font
 #   adafruit_minimqtt
+#   adafruit_ntp
 #   adafruit_ticks          (required by adafruit_minimqtt in CP10)
+#   neopixel
+#
+# Required font file (copy to /fonts on CIRCUITPY):
+#   fonts/NotoSans-Regular-12.bdf   (for Δ delta symbol on display)
+#   Source: https://github.com/adafruit/Adafruit_CircuitPython_Bitmap_Font/tree/main/examples/fonts
 
 import supervisor
 supervisor.runtime.autoreload = False
@@ -63,6 +69,7 @@ import wifi
 import socketpool
 import rtc
 from adafruit_display_text import label
+from adafruit_bitmap_font import bitmap_font
 import adafruit_ntp
 import adafruit_st7789
 import neopixel
@@ -526,6 +533,13 @@ display = adafruit_st7789.ST7789(
 )
 display.auto_refresh = False
 
+# Load a font that includes the delta symbol (Δ, U+0394).
+# Falls back to terminalio.FONT if the file is missing.
+try:
+    _FONT_DELTA = bitmap_font.load_font("/fonts/NotoSans-Regular-12.bdf")
+except Exception:
+    _FONT_DELTA = terminalio.FONT
+
 # Palette: 0=black, 1=white, 2=green, 3=amber, 4=red, 5=blue, 6=grey
 _pal = displayio.Palette(7)
 _pal[0] = COL_BG
@@ -589,7 +603,7 @@ _lbl_raw = label.Label(
 )
 splash.append(_lbl_raw)
 _lbl_delta = label.Label(
-    terminalio.FONT, text="\u0394: ------", color=COL_GREY, x=148, y=38,
+    _FONT_DELTA, text="\u0394: ------", color=COL_GREY, x=148, y=38,
 )
 splash.append(_lbl_delta)
 

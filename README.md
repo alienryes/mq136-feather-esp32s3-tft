@@ -149,7 +149,7 @@ The 240×135 IPS TFT is divided into seven zones:
 |  . . . . . . . . . . . . . . . . .  |   <- calibrated baseline
 |  [  |  |  || |||||||||||||||||||||] |
 +--------------------------------------+
-|  Rising                Nxt:4m32s   |   <- trend / publish countdown
+|  Rising                Nxt:4m32s     |   <- trend / publish countdown
 +--------------------------------------+
 ```
 

@@ -129,11 +129,13 @@ IDENTIFY_FLASHES = 6     # number of display on/off cycles for identify
 
 TFT_WIDTH = 240
 TFT_HEIGHT = 135
-BAR_X = 8
-BAR_Y = 82
-BAR_PX = 224             # usable pixel width inside bar outline
-BAR_HEIGHT = 12
-BAR_SPREAD_MIN = 100     # minimum observed spread before bar activates
+SPARK_X = 4             # sparkline left margin
+SPARK_Y = 68            # sparkline top (just below divider line 2)
+SPARK_W = 232           # sparkline pixel width
+SPARK_H = 44            # sparkline pixel height (down to y=112, leaving label row)
+SPARK_COLS = 12         # one column per hourly reading slot
+SPARK_COL_W = SPARK_W // SPARK_COLS   # 19px per column
+SPARK_MIN_SPREAD = 100  # minimum value spread before scaling activates
 
 # Colours
 COL_BG = 0x000000
@@ -393,14 +395,6 @@ def warmed_up():
     return _sample_count >= warmup_samples
 
 
-def scaled_bar_width(raw):
-    spread = _obs_max - _obs_min
-    if spread < BAR_SPREAD_MIN:
-        return 0
-    pos = (raw - _obs_min) / spread
-    return max(0, min(int(pos * BAR_PX), BAR_PX))
-
-
 def trend_symbol(prev_raw, curr_raw):
     delta = curr_raw - prev_raw
     if delta > trend_threshold:
@@ -560,29 +554,16 @@ def _hline_bitmap(width, colour_idx=6):
     return bm
 
 
-def _make_bar_outline():
-    w = BAR_PX + 2
-    h = BAR_HEIGHT + 2
-    bm = displayio.Bitmap(w, h, 7)
-    for i in range(w):
-        bm[i, 0] = 6
-        bm[i, h - 1] = 6
-    for i in range(h):
-        bm[0, i] = 6
-        bm[w - 1, i] = 6
-    return bm
-
-
 # ---------------------------------------------------------------------------
 # Display layout (240x135):
 #
-#  y=  8  MQ-136  H2S Sensor          12:34:56
-#  y= 22  ─────────────────────────────────────
-#  y= 38  14823 (×2)                   Δ +1823
-#  y= 55  Avg: 13201              -67dBm
-#  y= 68  ─────────────────────────────────────
-#  y= 82  [████████████░░░░░░░░░░░░░░░░░░░░░░]
-#  y=117  Rising                  Next: 4m12s
+#  y=  8  MQ-136  H2S              12:34:56
+#  y= 20  ──────────────────────────────────
+#  y= 38  14823 (×2)                D:+1823
+#  y= 55  Avg:13201                 -67dBm
+#  y= 66  ──────────────────────────────────
+#  y= 68  sparkline (232×44px, 12 columns)
+#  y=117  Rising                  Nxt:4m32s
 # ---------------------------------------------------------------------------
 
 splash = displayio.Group()
@@ -627,10 +608,10 @@ splash.append(displayio.TileGrid(
     _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=66,
 ))
 
-# Bar chart
-splash.append(displayio.TileGrid(_make_bar_outline(), pixel_shader=_pal, x=BAR_X, y=BAR_Y))
-_bar_fill = displayio.Bitmap(BAR_PX, BAR_HEIGHT, 7)
-splash.append(displayio.TileGrid(_bar_fill, pixel_shader=_pal, x=BAR_X + 1, y=BAR_Y + 1))
+# Sparkline bitmap (replaces bar chart)
+_spark_bm = displayio.Bitmap(SPARK_W, SPARK_H, 7)
+_spark_bm.fill(0)
+splash.append(displayio.TileGrid(_spark_bm, pixel_shader=_pal, x=SPARK_X, y=SPARK_Y))
 
 # Trend (left) + publish countdown (right)
 _lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=4, y=117)
@@ -693,13 +674,43 @@ def draw_display(raw, status, trend="---", show_prefix=True,
         _lbl_clock.text = clock_str
         _lbl_clock.color = _pal[1]
 
-    # Bar
-    _bar_fill.fill(0)
-    bar_width = scaled_bar_width(raw)
-    if bar_width > 0:
-        for x in range(bar_width):
-            for y in range(BAR_HEIGHT):
-                _bar_fill[x, y] = col
+    # Sparkline
+    _spark_bm.fill(0)
+    active = (_hourly[:_hourly_count] if _hourly_count < HOURLY_SIZE
+              else _hourly[_hourly_pos:] + _hourly[:_hourly_pos])
+    if len(active) >= 2:
+        lo = min(active)
+        hi = max(active)
+        spread = hi - lo
+        if spread < SPARK_MIN_SPREAD:
+            lo = lo - SPARK_MIN_SPREAD // 2
+            spread = SPARK_MIN_SPREAD
+        # Draw baseline reference line (grey) if calibrated
+        if _baseline_valid:
+            b_frac = (_baseline - lo) / spread
+            b_y = int((1.0 - b_frac) * (SPARK_H - 1))
+            b_y = max(0, min(b_y, SPARK_H - 1))
+            for x in range(SPARK_W):
+                _spark_bm[x, b_y] = 6   # grey
+        # Draw column for each reading, newest rightmost
+        for i, val in enumerate(active):
+            frac = (val - lo) / spread
+            bar_h = max(1, int(frac * (SPARK_H - 1)))
+            # Colour column by delta from baseline
+            if _baseline_valid:
+                d = val - _baseline
+                c = 4 if d > trend_threshold else (3 if d > 0 else 2)
+            else:
+                c = col
+            x0 = i * SPARK_COL_W
+            x1 = x0 + SPARK_COL_W - 1   # 1px gap between columns
+            for x in range(x0, x1):
+                for y in range(SPARK_H - bar_h, SPARK_H):
+                    _spark_bm[x, y] = c
+            # Bright top pixel to mark the peak of each column
+            top_y = SPARK_H - bar_h
+            for x in range(x0, x1):
+                _spark_bm[x, top_y] = 1   # white cap
 
     pat_watchdog()
     display.refresh()

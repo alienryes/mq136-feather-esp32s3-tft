@@ -136,20 +136,31 @@ All publish interval, trend threshold, and EWMA window parameters can also be ch
 The 240×135 IPS TFT is divided into seven zones:
 
 ```
-┌─────────────────────────────────────────┐
-│  MQ-136  H2S              12:34:56      │  Title + NTP clock
-│─────────────────────────────────────────│
-│  14823                      Δ:+1823     │  Raw EWMA (large) + delta from baseline
-│  raw ADC                                │  Caption for raw value
-│  Avg:13201                  -65dBm      │  Hourly average + WiFi RSSI
-│─────────────────────────────────────────│
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  │  Hourly sparkline (12 columns)
-│  ░░░░░░░░▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░  │
-│─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─│  (grey baseline reference line)
-│  Rising                   Nxt:4m32s   │  Trend + publish countdown
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  MQ-136  H2S             12:34:56   │
+├──────────────────────────────────────┤
+│  14823              Δ:+1823         │
+│  raw ADC                            │
+│  Avg:13201          -65dBm          │
+├──────────────────────────────────────┤
+│  ░░░▓▓▓░░░▓▓▓▓▓▓▓▓▓████████████░░  │
+│  ░░░▓▓▓░░░▓▓▓▓▓▓▓▓▓████████████░░  │
+│  ░░░▓▓▓░░░▓▓▓▓▓▓▓▓▓████████████░░  │
+│ - - - - - - - - - - - - - - - - -  │
+│  ░░░▓▓▓░░░▓▓▓▓▓▓▓▓▓████████████░░  │
+├──────────────────────────────────────┤
+│  Rising                Nxt:4m32s   │
+└──────────────────────────────────────┘
 ```
+
+| Zone | Contents |
+|------|----------|
+| Title row | Device name + NTP clock (UTC) |
+| Row 2 | Raw EWMA ADC value (large, colour-coded) + Δ from baseline |
+| Row 3 | `raw ADC` caption |
+| Row 4 | Hourly average + WiFi RSSI (colour-coded by signal strength) |
+| Sparkline | 12 hourly columns, oldest left → newest right; dashed line = calibrated baseline |
+| Bottom row | Trend (Rising / Falling / Stable) + publish countdown |
 
 ### Raw ADC value
 Large (scale=2) text, colour-coded by status: green = OK, amber = warming up or publishing, red = MQTT error.

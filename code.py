@@ -61,8 +61,11 @@ import microcontroller
 import watchdog
 import wifi
 import socketpool
+import rtc
 from adafruit_display_text import label
+import adafruit_ntp
 import adafruit_st7789
+import neopixel
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 
 # ---------------------------------------------------------------------------
@@ -127,9 +130,9 @@ IDENTIFY_FLASHES = 6     # number of display on/off cycles for identify
 TFT_WIDTH = 240
 TFT_HEIGHT = 135
 BAR_X = 8
-BAR_Y = 88
+BAR_Y = 82
 BAR_PX = 224             # usable pixel width inside bar outline
-BAR_HEIGHT = 14
+BAR_HEIGHT = 12
 BAR_SPREAD_MIN = 100     # minimum observed spread before bar activates
 
 # Colours
@@ -140,6 +143,9 @@ COL_AMBER = 0xFFAA00
 COL_RED = 0xFF2222
 COL_BLUE = 0x4488FF
 COL_GREY = 0x888888
+
+# NeoPixel brightness (0.0–1.0)
+NEOPIXEL_BRIGHTNESS = 0.15
 
 # ---------------------------------------------------------------------------
 # NVM layout (identical to RP2350 version — data is cross-compatible)
@@ -567,57 +573,134 @@ def _make_bar_outline():
     return bm
 
 
+# ---------------------------------------------------------------------------
+# Display layout (240x135):
+#
+#  y=  8  MQ-136  H2S Sensor          12:34:56
+#  y= 22  ─────────────────────────────────────
+#  y= 38  14823 (×2)                   Δ +1823
+#  y= 55  Avg: 13201              -67dBm
+#  y= 68  ─────────────────────────────────────
+#  y= 82  [████████████░░░░░░░░░░░░░░░░░░░░░░]
+#  y=117  Rising                  Next: 4m12s
+# ---------------------------------------------------------------------------
+
 splash = displayio.Group()
 
-# Title
+# Title (left) + clock (right)
 splash.append(label.Label(
-    terminalio.FONT, text="MQ-136  H2S Sensor",
-    color=COL_WHITE, x=28, y=8, scale=2,
+    terminalio.FONT, text="MQ-136  H2S",
+    color=COL_WHITE, x=4, y=8, scale=2,
 ))
+_lbl_clock = label.Label(
+    terminalio.FONT, text="--:--:--", color=COL_GREY, x=168, y=8, scale=1,
+)
+splash.append(_lbl_clock)
 
-# Divider line under title
+# Divider line 1
 splash.append(displayio.TileGrid(
-    _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=22,
+    _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=20,
 ))
 
-# Raw ADC value + range
+# Raw ADC value (left, large) + delta (right)
 _lbl_raw = label.Label(
     terminalio.FONT, text="------", color=COL_BLUE, x=4, y=38, scale=2,
 )
 splash.append(_lbl_raw)
-_lbl_range = label.Label(
-    terminalio.FONT, text="[-----  -----]", color=COL_GREY, x=4, y=55,
+_lbl_delta = label.Label(
+    terminalio.FONT, text="D: ------", color=COL_GREY, x=148, y=38,
 )
-splash.append(_lbl_range)
+splash.append(_lbl_delta)
+
+# Hourly average (left) + RSSI (right)
+_lbl_avg = label.Label(
+    terminalio.FONT, text="Avg: -----", color=COL_GREY, x=4, y=55,
+)
+splash.append(_lbl_avg)
+_lbl_rssi = label.Label(
+    terminalio.FONT, text="----dBm", color=COL_GREY, x=168, y=55,
+)
+splash.append(_lbl_rssi)
+
+# Divider line 2
+splash.append(displayio.TileGrid(
+    _hline_bitmap(TFT_WIDTH), pixel_shader=_pal, x=0, y=66,
+))
 
 # Bar chart
 splash.append(displayio.TileGrid(_make_bar_outline(), pixel_shader=_pal, x=BAR_X, y=BAR_Y))
 _bar_fill = displayio.Bitmap(BAR_PX, BAR_HEIGHT, 7)
 splash.append(displayio.TileGrid(_bar_fill, pixel_shader=_pal, x=BAR_X + 1, y=BAR_Y + 1))
 
-# Status and trend labels
-_lbl_status = label.Label(terminalio.FONT, text="Status: ---", color=COL_AMBER, x=4, y=117)
-splash.append(_lbl_status)
-_lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=140, y=117)
+# Trend (left) + publish countdown (right)
+_lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=4, y=117)
 splash.append(_lbl_trend)
+_lbl_next = label.Label(terminalio.FONT, text="Next: --:--", color=COL_GREY, x=140, y=117)
+splash.append(_lbl_next)
 
 display.root_group = splash
 
 
-def draw_display(raw, status, trend="---", show_prefix=True):
+def _fmt_countdown(secs):
+    """Format seconds as Mm Ss or Ss."""
+    s = max(0, int(secs))
+    if s >= 60:
+        return str(s // 60) + "m" + str(s % 60).zfill(2) + "s"
+    return str(s) + "s"
+
+
+def draw_display(raw, status, trend="---", show_prefix=True,
+                 hour_avg=None, rssi=0, next_secs=None, clock_str=None):
+    col = _status_colour(status)
     _lbl_raw.text = str(raw)
-    _lbl_raw.color = _pal[_status_colour(status)]
-    _lbl_range.text = "[" + str(_obs_min) + "  " + str(_obs_max) + "]"
-    _lbl_status.text = ("Status: " + status) if show_prefix else status
-    _lbl_status.color = _pal[_status_colour(status)]
-    _lbl_trend.text = "Trend: " + trend
+    _lbl_raw.color = _pal[col]
+
+    # Delta from baseline
+    if _baseline_valid:
+        d = raw - _baseline
+        _lbl_delta.text = "D:" + ("+" if d >= 0 else "") + str(d)
+        _lbl_delta.color = _pal[4 if d > trend_threshold else (3 if d > 0 else 2)]
+    else:
+        _lbl_delta.text = "D: --"
+        _lbl_delta.color = _pal[6]
+
+    # Hourly average
+    if hour_avg is not None:
+        _lbl_avg.text = "Avg:" + str(hour_avg)
+        _lbl_avg.color = _pal[1]
+    else:
+        _lbl_avg.text = "Avg: --"
+        _lbl_avg.color = _pal[6]
+
+    # RSSI
+    _lbl_rssi.text = str(rssi) + "dBm"
+    _lbl_rssi.color = _pal[2 if rssi >= -67 else (3 if rssi >= -80 else 4)]
+
+    # Trend
+    _lbl_trend.text = ("" if show_prefix else "") + trend
+    _lbl_trend.color = _pal[3 if trend == "Rising" else (2 if trend == "Falling" else 1)]
+
+    # Publish countdown
+    if next_secs is not None:
+        _lbl_next.text = "Nxt:" + _fmt_countdown(next_secs)
+        _lbl_next.color = _pal[1]
+    else:
+        _lbl_next.text = status if not show_prefix else "Status:" + status
+        _lbl_next.color = _pal[col]
+
+    # Clock
+    if clock_str:
+        _lbl_clock.text = clock_str
+        _lbl_clock.color = _pal[1]
+
+    # Bar
     _bar_fill.fill(0)
     bar_width = scaled_bar_width(raw)
     if bar_width > 0:
-        col = _status_colour(status)
         for x in range(bar_width):
             for y in range(BAR_HEIGHT):
                 _bar_fill[x, y] = col
+
     pat_watchdog()
     display.refresh()
     pat_watchdog()
@@ -633,6 +716,34 @@ def identify_flash():
         time.sleep(0.2)
         pat_watchdog()
     print("Identify flash complete")
+
+
+# ---------------------------------------------------------------------------
+# NeoPixel status indicator
+# ---------------------------------------------------------------------------
+
+_pixel = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=NEOPIXEL_BRIGHTNESS, auto_write=True)
+
+
+def pixel_set(colour):
+    """Set NeoPixel to an (r, g, b) tuple."""
+    _pixel[0] = colour
+
+
+PIXEL_OFF = (0, 0, 0)
+PIXEL_GREEN = (0, 204, 68)
+PIXEL_AMBER = (255, 170, 0)
+PIXEL_RED = (255, 34, 34)
+PIXEL_BLUE = (68, 136, 255)
+
+
+def pixel_for_status(status):
+    s = status.lower()
+    if "no mqtt" in s or "fail" in s or "error" in s:
+        return PIXEL_RED
+    if "warm" in s or "publish" in s:
+        return PIXEL_AMBER
+    return PIXEL_GREEN
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +777,36 @@ def connect_wifi():
 
 
 connect_wifi()
+
+# ---------------------------------------------------------------------------
+# NTP time sync — one-shot at boot; RTC holds time thereafter
+# ---------------------------------------------------------------------------
+
+_clock_valid = False
+
+
+def sync_ntp():
+    global _clock_valid
+    try:
+        ntp = adafruit_ntp.NTP(socketpool.SocketPool(wifi.radio), tz_offset=0)
+        rtc.RTC().datetime = ntp.datetime
+        _clock_valid = True
+        print("NTP synced")
+    except Exception as exc:
+        print("NTP sync failed:", exc)
+
+
+def clock_str():
+    """Return HH:MM:SS string from RTC, or '--:--:--' if not synced."""
+    if not _clock_valid:
+        return "--:--:--"
+    t = rtc.RTC().datetime
+    return (str(t.tm_hour).zfill(2) + ":" +
+            str(t.tm_min).zfill(2) + ":" +
+            str(t.tm_sec).zfill(2))
+
+
+sync_ntp()
 
 
 # ---------------------------------------------------------------------------
@@ -908,9 +1049,13 @@ last_sample = -SAMPLE_INTERVAL
 last_publish = -publish_interval
 last_status = "Warming Up"
 last_trend = "---"
+last_hour_avg = None
+last_rssi = 0
 prev_raw = None
 _cal_display_until = 0
 _publish_in_flight = False
+
+pixel_set(PIXEL_AMBER)   # amber during warmup
 
 while True:
     pat_watchdog()
@@ -926,6 +1071,7 @@ while True:
         _ipc_lock.release()
         if result is not None:
             last_status = result
+            pixel_set(pixel_for_status(last_status))
 
     # --- Apply any queued config changes ---
     apply_pending_config()
@@ -989,7 +1135,11 @@ while True:
             remaining = (warmup_samples - _sample_count) * SAMPLE_INTERVAL
             status = "Warmup " + str(remaining) + "s"
 
-        draw_display(raw, status, last_trend)
+        draw_display(raw, status, last_trend,
+                     hour_avg=last_hour_avg,
+                     rssi=last_rssi,
+                     next_secs=(publish_interval - (now - last_publish)) if warmed_up() else None,
+                     clock_str=clock_str())
 
         if warmed_up():
             delta_str = ("  delta=" + str(raw - _baseline)) if _baseline_valid else ""
@@ -1013,6 +1163,8 @@ while True:
         prev_raw = raw
         record_hourly(raw)
         stats = hourly_stats()
+        if stats is not None:
+            last_hour_avg = stats[0]
         payload_dict = {
             "raw": raw,
             "trend": last_trend,
@@ -1033,6 +1185,7 @@ while True:
             _nvm_write_sensor()
             pat_watchdog()
         rssi = read_rssi()
+        last_rssi = rssi
         payload_dict["rssi"] = rssi
         if _DUAL_CORE:
             _ipc_lock.acquire()
@@ -1043,16 +1196,21 @@ while True:
             _ipc_lock.release()
             _publish_in_flight = True
             last_status = "Publishing"
+            pixel_set(PIXEL_BLUE)
             print("Publish queued  raw=" + str(raw) + "  trend=" + last_trend
                   + "  rssi=" + str(rssi) + " dBm")
         else:
             try:
                 last_status = do_publish(json.dumps(payload_dict))
+                pixel_set(pixel_for_status(last_status))
                 print("Published  raw=" + str(raw) + "  trend=" + last_trend
                       + "  rssi=" + str(rssi) + " dBm")
             except Exception as exc:
                 print("Publish failed:", exc)
                 last_status = "No MQTT"
-            draw_display(raw, last_status, last_trend)
+                pixel_set(PIXEL_RED)
+            draw_display(raw, last_status, last_trend,
+                         hour_avg=last_hour_avg, rssi=last_rssi,
+                         next_secs=publish_interval, clock_str=clock_str())
 
     time.sleep(0.1)

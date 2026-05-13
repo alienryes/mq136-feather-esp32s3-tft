@@ -574,10 +574,10 @@ def _hline_bitmap(width, colour_idx=6):
 #  y=  8  MQ-136  H2S              12:34:56
 #  y= 20  ──────────────────────────────────
 #  y= 38  14823 (×2)                D:+1823
-#  y= 55  Avg:13201                 -67dBm
+#  y= 55  Avg:13201          RSSI:-67dBm
 #  y= 66  ──────────────────────────────────
 #  y= 68  sparkline (232×44px, 12 columns)
-#  y=117  Rising                  Nxt:4m32s
+#  y=117  Trend: Rising       Nxt Pub:4m32s
 # ---------------------------------------------------------------------------
 
 splash = displayio.Group()
@@ -616,7 +616,7 @@ _lbl_avg = label.Label(
 )
 splash.append(_lbl_avg)
 _lbl_rssi = label.Label(
-    terminalio.FONT, text="----dBm", color=COL_GREY, x=168, y=60,
+    terminalio.FONT, text="RSSI:----dBm", color=COL_GREY, x=170, y=60,
 )
 splash.append(_lbl_rssi)
 
@@ -633,7 +633,7 @@ splash.append(displayio.TileGrid(_spark_bm, pixel_shader=_pal, x=SPARK_X, y=SPAR
 # Trend (left) + publish countdown (right)
 _lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=4, y=117)
 splash.append(_lbl_trend)
-_lbl_next = label.Label(terminalio.FONT, text="Next: --:--", color=COL_GREY, x=140, y=117)
+_lbl_next = label.Label(terminalio.FONT, text="Nxt Pub: --:--", color=COL_GREY, x=140, y=117)
 splash.append(_lbl_next)
 
 display.root_group = splash
@@ -643,8 +643,8 @@ def _fmt_countdown(secs):
     """Format seconds as Mm Ss or Ss."""
     s = max(0, int(secs))
     if s >= 60:
-        return str(s // 60) + "m" + str(s % 60).zfill(2) + "s"
-    return str(s) + "s"
+        return f"{s // 60}m{s % 60:02d}s"
+    return f"{s}s"
 
 
 def draw_display(raw, status, trend="---", show_prefix=True,
@@ -671,16 +671,16 @@ def draw_display(raw, status, trend="---", show_prefix=True,
         _lbl_avg.color = _pal[6]
 
     # RSSI
-    _lbl_rssi.text = str(rssi) + "dBm"
+    _lbl_rssi.text = "RSSI:" + str(rssi) + "dBm"
     _lbl_rssi.color = _pal[2 if rssi >= -67 else (3 if rssi >= -80 else 4)]
 
     # Trend
-    _lbl_trend.text = ("" if show_prefix else "") + trend
+    _lbl_trend.text = ("Trend: " if show_prefix else "") + trend
     _lbl_trend.color = _pal[3 if trend == "Rising" else (2 if trend == "Falling" else 1)]
 
     # Publish countdown
     if next_secs is not None:
-        _lbl_next.text = "Nxt:" + _fmt_countdown(next_secs)
+        _lbl_next.text = "Nxt Pub:" + _fmt_countdown(next_secs)
         _lbl_next.color = _pal[1]
     else:
         _lbl_next.text = status if not show_prefix else "Status:" + status
@@ -829,9 +829,7 @@ def clock_str():
     if not _clock_valid:
         return "--:--:--"
     t = rtc.RTC().datetime
-    return (str(t.tm_hour).zfill(2) + ":" +
-            str(t.tm_min).zfill(2) + ":" +
-            str(t.tm_sec).zfill(2))
+    return f"{t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}"
 
 
 sync_ntp()
@@ -1152,6 +1150,7 @@ while True:
     # --- Sample every SAMPLE_INTERVAL seconds ---
     if now - last_sample >= SAMPLE_INTERVAL:
         last_sample = now
+        last_rssi = read_rssi()
         sample_sensor()
         raw = current_reading()
 

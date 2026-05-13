@@ -74,6 +74,7 @@ Copy the following libraries from the [Adafruit CircuitPython Library Bundle](ht
 | `adafruit_display_text` | Text labels for displayio |
 | `adafruit_bitmap_font` | BDF font loader (for Δ symbol) |
 | `adafruit_minimqtt` | MQTT client |
+| `adafruit_connection_manager` | Socket/connection management (required by adafruit_minimqtt) |
 | `adafruit_ntp` | NTP time sync |
 | `adafruit_ticks` | Required by adafruit_minimqtt in CP10 |
 | `neopixel` | On-board NeoPixel status LED |
@@ -82,9 +83,9 @@ A font file is also required — copy to `/fonts` on `CIRCUITPY`:
 
 | File | Source |
 |------|--------|
-| `fonts/NotoSans-Regular-12.bdf` | [Adafruit CircuitPython Bitmap Font examples](https://github.com/adafruit/Adafruit_CircuitPython_Bitmap_Font/tree/main/examples/fonts) |
+| `fonts/NotoSans-Regular-12.bdf` | Generate from `NotoSans-Regular.ttf` using `otf2bdf -p 12 -r 75` (see repo `fonts/` folder for pre-generated copy) |
 
-> The font is used only for the Δ delta label. If the file is missing the firmware falls back to `terminalio.FONT` automatically — `D:` will be displayed instead of `Δ:`.
+> `NotoSans-Regular-12.bdf` is **not** available as a pre-built download from the Adafruit Bitmap Font repository. The file in this repo was generated with `otf2bdf 3.0` from the `fonts-noto-core` package (Google Noto Fonts, SIL Open Font License).
 
 ---
 
@@ -141,7 +142,7 @@ The 240×135 IPS TFT is divided into seven zones:
 +--------------------------------------+
 |  14823              D:+1823          |   <- raw ADC (large) / delta
 |  raw ADC                             |
-|  Avg:13201          -65dBm           |   <- hourly avg / RSSI
+|  Avg:13201          RSSI:-65dBm      |   <- hourly avg / RSSI
 +--------------------------------------+
 |  [  |  |  || |||||||||||||||||||||]  |
 |  [  |  |  || |||||||||||||||||||||]  |   <- sparkline (12 cols)
@@ -149,7 +150,7 @@ The 240×135 IPS TFT is divided into seven zones:
 |  . . . . . . . . . . . . . . . . .   |   <- calibrated baseline
 |  [  |  |  || |||||||||||||||||||||]  |
 +--------------------------------------+
-|  Rising                Nxt:4m32s     |   <- trend / publish countdown
+|  Trend: Rising       Nxt Pub:4m32s   |   <- trend / publish countdown
 +--------------------------------------+
 ```
 
@@ -172,17 +173,17 @@ Difference between current reading and the calibrated clean-air baseline. Green 
 Mean of the last 60 minutes of readings. Appears from the second publish cycle onwards. Grey until data is available.
 
 ### WiFi RSSI
-Current WiFi signal strength: green ≥ −67 dBm, amber ≥ −80 dBm, red below −80 dBm.
+Current WiFi signal strength, displayed as `RSSI:-67dBm`: green ≥ −67 dBm, amber ≥ −80 dBm, red below −80 dBm. Updated every sample interval from the first sample — visible during warm-up.
 
 ### Sparkline
-232×44 px graph showing the last 12 hourly readings (oldest left, newest right). Each column is 19px wide with a 1px gap. Features:
+232×44 px graph showing the last 12 publish-cycle readings (oldest left, newest right). Each column is 19px wide with a 1px gap. Appears from the **second publish onwards** (~10 minutes after warm-up at the default 5-minute interval); the area is blank until then. Features:
 - **Colour per column** — same green/amber/red scheme as delta, applied individually to each bar
 - **White cap** on top of each column to mark the peak clearly
 - **Grey horizontal baseline reference line** across the full width when a calibration baseline is set
 - **Auto-scaled** — y-axis adjusts to the min/max of visible history; artificially widened if spread is too small (<100 ADC counts) to avoid a flat line at the bottom
 
 ### Publish countdown
-Shows time until next MQTT publish (e.g. `Nxt:4m32s`). Updates every 10 seconds alongside the sensor sample. Reassures you the device is alive between 5-minute publish gaps.
+Shows time until next MQTT publish (e.g. `Nxt Pub:4m32s`). Updates every 10 seconds alongside the sensor sample. Reassures you the device is alive between 5-minute publish gaps.
 
 ### NTP clock
 Synced once at boot after WiFi connects. Displays UTC time as `HH:MM:SS`. Shows `--:--:--` if NTP sync fails (device still operates normally).

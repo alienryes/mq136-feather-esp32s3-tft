@@ -19,7 +19,7 @@
 #   Hourly min/avg/max ring buffer
 #   Full HA MQTT auto-discovery
 #   Runtime-tunable config via MQTT (publish interval, EWMA window, threshold)
-#   Remote commands: reboot, calibrate, NVM reset, identify, diagnostic publish
+#   Remote commands: reboot, calibrate, NVM reset, diagnostic publish
 #   NVM persistence of calibration, min/max, and config across reboots
 #   Dual-core: Core 0 owns sampling/display, Core 1 owns WiFi/MQTT
 #
@@ -128,8 +128,6 @@ HOURLY_SIZE = 12
 WATCHDOG_TIMEOUT = 8     # seconds — hardware maximum
 ADC_MAX = 65535
 CAL_MSG_DURATION = 3     # seconds to show "Calibrated" message
-IDENTIFY_FLASHES = 6     # number of display on/off cycles for identify
-
 # ---------------------------------------------------------------------------
 # Display geometry (240x135 ST7789)
 # ---------------------------------------------------------------------------
@@ -329,10 +327,6 @@ def build_discovery_topics():
     topics["homeassistant/button/mq136_nvm_reset/config"] = _button_discovery(
         "MQ-136 NVM Reset", "cmd_nvm_reset",
         CMD_TOPIC, "nvm_reset", "mdi:database-remove",
-    )
-    topics["homeassistant/button/mq136_identify/config"] = _button_discovery(
-        "MQ-136 Identify", "cmd_identify",
-        CMD_TOPIC, "identify", "mdi:led-on",
     )
     topics["homeassistant/button/mq136_status/config"] = _button_discovery(
         "MQ-136 Diagnostic Publish", "cmd_status",
@@ -734,18 +728,6 @@ def draw_display(raw, status, trend="---", show_prefix=True,
     pat_watchdog()
 
 
-def identify_flash():
-    """Flash the display on/off for physical identification."""
-    for _ in range(IDENTIFY_FLASHES):
-        display.brightness = 0
-        time.sleep(0.2)
-        pat_watchdog()
-        display.brightness = 1.0
-        time.sleep(0.2)
-        pat_watchdog()
-    print("Identify flash complete")
-
-
 # ---------------------------------------------------------------------------
 # NeoPixel status indicator
 # ---------------------------------------------------------------------------
@@ -842,14 +824,13 @@ sync_ntp()
 _pending_reboot = False
 _pending_calibrate = False
 _pending_nvm_reset = False
-_pending_identify = False
 _pending_diag = False
 _pending_config = {}
 
 
 def _on_cmd(client, topic, message):
     global _pending_reboot, _pending_calibrate
-    global _pending_nvm_reset, _pending_identify, _pending_diag
+    global _pending_nvm_reset, _pending_diag
     cmd = message.strip().lower()
     print("CMD received: " + cmd)
     if cmd == "reboot":
@@ -858,8 +839,6 @@ def _on_cmd(client, topic, message):
         _pending_calibrate = True
     elif cmd == "nvm_reset":
         _pending_nvm_reset = True
-    elif cmd == "identify":
-        _pending_identify = True
     elif cmd == "status":
         _pending_diag = True
     else:
@@ -1113,10 +1092,6 @@ while True:
         _pending_nvm_reset = False
         nvm_reset_all()
         draw_display(current_reading(), "NVM Reset", last_trend)
-
-    if _pending_identify:
-        _pending_identify = False
-        identify_flash()
 
     if _pending_calibrate:
         _pending_calibrate = False

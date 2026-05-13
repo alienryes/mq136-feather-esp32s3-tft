@@ -24,7 +24,7 @@ Port of the [MQ-136 H2S monitor for Feather RP2350](https://github.com/alienryes
 - **60-minute history ring buffer** — 12 readings, one per publish cycle; publishes `hour_avg`, `hour_min`, `hour_max`
 - **Dual-core with single-core fallback** — Core 0 owns sampling and display; Core 1 owns WiFi/MQTT; falls back to single-core automatically if `_thread` is unavailable
 - **OTA runtime config** — publish interval, EWMA window, and trend threshold all tunable live via MQTT without reflashing
-- **Remote commands** — reboot, calibrate, NVM reset, identify, diagnostic publish — all via HA MQTT buttons
+- **Remote commands** — reboot, calibrate, NVM reset, diagnostic publish — all via HA MQTT buttons
 - **NVM persistence** — calibration baseline, observed min/max, and config survive reboots
 - **Boot publish** — fires immediately after WiFi connects so HA never shows stale data after a reboot
 - **Hardware watchdog** — 8-second timeout resets the board if the main loop stalls
@@ -232,7 +232,6 @@ Brightness is set by `NEOPIXEL_BRIGHTNESS` (default 0.15 — low enough not to b
 | `homeassistant/button/mq136_reboot/config` | Published | HA discovery (button entity) |
 | `homeassistant/button/mq136_calibrate/config` | Published | HA discovery (button entity) |
 | `homeassistant/button/mq136_nvm_reset/config` | Published | HA discovery (button entity) |
-| `homeassistant/button/mq136_identify/config` | Published | HA discovery (button entity) |
 | `homeassistant/button/mq136_status/config` | Published | HA discovery (button entity) |
 
 ### State payload
@@ -311,7 +310,6 @@ With MQTT auto-discovery enabled (the default in modern HA), the device appears 
 | MQ-136 Reboot | Clean software reboot |
 | MQ-136 Calibrate | Capture current reading as clean-air baseline |
 | MQ-136 NVM Reset | Clear all persisted min/max, baseline, and config |
-| MQ-136 Identify | Flash display on/off 6 times for physical location |
 | MQ-136 Diagnostic Publish | Immediate publish of extended diagnostic payload |
 
 ---

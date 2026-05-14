@@ -73,7 +73,7 @@ import adafruit_minimqtt.adafruit_minimqtt as MQTT
 # Firmware version
 # ---------------------------------------------------------------------------
 
-FIRMWARE_VERSION = "1.0.0"
+FIRMWARE_VERSION = "1.0.1"
 
 # ---------------------------------------------------------------------------
 # Reset reason — captured once at boot before anything can change it

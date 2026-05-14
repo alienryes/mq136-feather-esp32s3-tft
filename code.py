@@ -21,7 +21,7 @@
 #   Runtime-tunable config via MQTT (publish interval, EWMA window, threshold)
 #   Remote commands: reboot, calibrate, NVM reset, diagnostic publish
 #   NVM persistence of calibration, min/max, and config across reboots
-#   Dual-core: Core 0 owns sampling/display, Core 1 owns WiFi/MQTT
+#   Persistent MQTT connection — commands received within one sample interval
 #
 # Source repo:  https://github.com/alienryes/mq136-feather-esp32s3-tft
 # RP2350 repo:  https://github.com/alienryes/mq136-feather-rp2350
@@ -45,12 +45,6 @@
 
 import supervisor
 supervisor.runtime.autoreload = False
-
-try:
-    import _thread
-    _DUAL_CORE = True
-except ImportError:
-    _DUAL_CORE = False
 
 import gc
 import json
@@ -913,27 +907,18 @@ mqtt_client.will_set(AVAIL_TOPIC, "offline", retain=True)
 mqtt_client.on_message = _on_cmd
 
 discovery_sent = False
+_mqtt_connected = False
 
 
-def do_publish(payload, extra_publish=None):
-    """Open a fresh MQTT connection, publish readings, then disconnect."""
-    global discovery_sent
-    pat_watchdog()
+def mqtt_connect():
+    """Connect to broker, subscribe to command/config topics, send discovery and online."""
+    global discovery_sent, _mqtt_connected
     if not wifi.radio.connected:
         connect_wifi()
     print("MQTT connecting...")
     pat_watchdog()
     mqtt_client.connect()
     pat_watchdog()
-    pat_watchdog()
-
-    if not discovery_sent:
-        print("Publishing discovery...")
-        for topic, disc_payload in build_discovery_topics().items():
-            mqtt_client.publish(topic, disc_payload, retain=True)
-            pat_watchdog()
-        discovery_sent = True
-
     mqtt_client.subscribe(CMD_TOPIC)
     mqtt_client.add_topic_callback(CMD_TOPIC, _on_cmd)
     mqtt_client.subscribe(CFG_TOPIC + "/#")
@@ -944,26 +929,46 @@ def do_publish(payload, extra_publish=None):
     mqtt_client.add_topic_callback(CFG_TOPIC + "/ewma_n",
                                    lambda c, t, m: _on_cfg(c, t, m))
     pat_watchdog()
-
+    if not discovery_sent:
+        print("Publishing discovery...")
+        for topic, disc_payload in build_discovery_topics().items():
+            mqtt_client.publish(topic, disc_payload, retain=True)
+            pat_watchdog()
+        discovery_sent = True
     mqtt_client.publish(AVAIL_TOPIC, "online", retain=True)
+    pat_watchdog()
+    _mqtt_connected = True
+    print("MQTT connected")
+
+
+def mqtt_ensure_connected():
+    """Reconnect to broker if the connection has been lost."""
+    if not _mqtt_connected:
+        mqtt_connect()
+
+
+def _mqtt_poll():
+    """Non-blocking poll for incoming MQTT messages; marks disconnected on error."""
+    global _mqtt_connected
+    if not _mqtt_connected:
+        return
+    try:
+        mqtt_client.loop(timeout=0)
+    except Exception as exc:
+        print("MQTT poll error:", exc)
+        _mqtt_connected = False
+
+
+def do_publish(payload, extra_publish=None):
+    """Publish readings over the persistent MQTT connection."""
+    mqtt_ensure_connected()
     pat_watchdog()
     mqtt_client.publish(STATE_TOPIC, payload, retain=True)
     pat_watchdog()
-
     if extra_publish:
         for ep_topic, ep_payload in extra_publish:
             mqtt_client.publish(ep_topic, ep_payload, retain=False)
             pat_watchdog()
-
-    try:
-        mqtt_client.loop(timeout=1)
-        pat_watchdog()
-    except Exception:
-        pass
-
-    mqtt_client.disconnect()
-    pat_watchdog()
-    print("MQTT published and disconnected")
     return "OK"
 
 
@@ -992,6 +997,12 @@ def build_diag_payload():
 # Boot publish
 # ---------------------------------------------------------------------------
 
+draw_display(0, "MQTT connecting...", show_prefix=False)
+try:
+    mqtt_connect()
+except Exception as exc:
+    print("MQTT connect failed:", exc)
+
 draw_display(0, "MQTT boot pub", show_prefix=False)
 try:
     _boot_raw = sensor_pin.value
@@ -1009,44 +1020,6 @@ except Exception as exc:
 
 
 # ---------------------------------------------------------------------------
-# Inter-core communication (IPC) — dual-core mode only
-# ---------------------------------------------------------------------------
-
-if _DUAL_CORE:
-    _ipc_lock = _thread.allocate_lock()
-    _ipc_request = False
-    _ipc_payload = ""
-    _ipc_extra = None
-    _ipc_result = None
-
-    def _mqtt_core_thread():
-        global _ipc_request, _ipc_result
-        while True:
-            _ipc_lock.acquire()
-            if _ipc_request:
-                payload = _ipc_payload
-                extra = _ipc_extra
-                _ipc_request = False
-                _ipc_lock.release()
-                try:
-                    result = do_publish(payload, extra)
-                except Exception as exc:
-                    print("Core1: publish failed:", exc)
-                    result = "No MQTT"
-                _ipc_lock.acquire()
-                _ipc_result = result
-                _ipc_lock.release()
-            else:
-                _ipc_lock.release()
-                time.sleep(0.05)
-
-    _thread.start_new_thread(_mqtt_core_thread, ())
-    print("Dual-core: Core 1 started")
-else:
-    print("Single-core: _thread not available, publishing on Core 0")
-
-
-# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 
@@ -1058,7 +1031,6 @@ last_hour_avg = None
 last_rssi = 0
 prev_raw = None
 _cal_display_until = 0
-_publish_in_flight = False
 
 pixel_set(PIXEL_AMBER)   # amber during warmup
 
@@ -1066,17 +1038,8 @@ while True:
     pat_watchdog()
     now = time.monotonic()
 
-    # --- Collect result from Core 1 (dual-core only) ---
-    if _DUAL_CORE and _publish_in_flight:
-        _ipc_lock.acquire()
-        result = _ipc_result
-        if result is not None:
-            _ipc_result = None
-            _publish_in_flight = False
-        _ipc_lock.release()
-        if result is not None:
-            last_status = result
-            pixel_set(pixel_for_status(last_status))
+    # --- Poll for incoming MQTT messages (non-blocking) ---
+    _mqtt_poll()
 
     # --- Apply any queued config changes ---
     apply_pending_config()
@@ -1105,22 +1068,14 @@ while True:
         _pending_diag = False
         diag_payload = build_diag_payload()
         print("Diag publish: " + diag_payload)
-        if _DUAL_CORE and not _publish_in_flight:
-            _ipc_lock.acquire()
-            _ipc_payload = json.dumps({"raw": current_reading(), "status": last_status})
-            _ipc_extra = [(DIAG_TOPIC, diag_payload)]
-            _ipc_request = True
-            _ipc_result = None
-            _ipc_lock.release()
-            _publish_in_flight = True
-        elif not _DUAL_CORE:
-            try:
-                do_publish(
-                    json.dumps({"raw": current_reading(), "status": last_status}),
-                    [(DIAG_TOPIC, diag_payload)],
-                )
-            except Exception as exc:
-                print("Diag publish failed:", exc)
+        try:
+            do_publish(
+                json.dumps({"raw": current_reading(), "status": last_status}),
+                [(DIAG_TOPIC, diag_payload)],
+            )
+        except Exception as exc:
+            print("Diag publish failed:", exc)
+            _mqtt_connected = False
 
     # --- Sample every SAMPLE_INTERVAL seconds ---
     if now - last_sample >= SAMPLE_INTERVAL:
@@ -1154,11 +1109,7 @@ while True:
                   + "  raw=" + str(raw))
 
     # --- Publish every publish_interval seconds, after warmup ---
-    publish_due = warmed_up() and now - last_publish >= publish_interval
-    if _DUAL_CORE:
-        publish_due = publish_due and not _publish_in_flight
-
-    if publish_due:
+    if warmed_up() and now - last_publish >= publish_interval:
         last_publish = now
         raw = current_reading()
         last_trend = trend_symbol(prev_raw, raw) if prev_raw is not None else "Stable"
@@ -1189,30 +1140,18 @@ while True:
         rssi = read_rssi()
         last_rssi = rssi
         payload_dict["rssi"] = rssi
-        if _DUAL_CORE:
-            _ipc_lock.acquire()
-            _ipc_payload = json.dumps(payload_dict)
-            _ipc_extra = None
-            _ipc_request = True
-            _ipc_result = None
-            _ipc_lock.release()
-            _publish_in_flight = True
-            last_status = "Publishing"
-            pixel_set(PIXEL_BLUE)
-            print("Publish queued  raw=" + str(raw) + "  trend=" + last_trend
+        try:
+            last_status = do_publish(json.dumps(payload_dict))
+            pixel_set(pixel_for_status(last_status))
+            print("Published  raw=" + str(raw) + "  trend=" + last_trend
                   + "  rssi=" + str(rssi) + " dBm")
-        else:
-            try:
-                last_status = do_publish(json.dumps(payload_dict))
-                pixel_set(pixel_for_status(last_status))
-                print("Published  raw=" + str(raw) + "  trend=" + last_trend
-                      + "  rssi=" + str(rssi) + " dBm")
-            except Exception as exc:
-                print("Publish failed:", exc)
-                last_status = "No MQTT"
-                pixel_set(PIXEL_RED)
-            draw_display(raw, last_status, last_trend,
-                         hour_avg=last_hour_avg, rssi=last_rssi,
-                         next_secs=publish_interval, clock_str=clock_str())
+        except Exception as exc:
+            print("Publish failed:", exc)
+            last_status = "No MQTT"
+            _mqtt_connected = False
+            pixel_set(PIXEL_RED)
+        draw_display(raw, last_status, last_trend,
+                     hour_avg=last_hour_avg, rssi=last_rssi,
+                     next_secs=publish_interval, clock_str=clock_str())
 
     time.sleep(0.1)

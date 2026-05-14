@@ -22,7 +22,7 @@ Port of the [MQ-136 H2S monitor for Feather RP2350](https://github.com/alienryes
 - **Median-of-3 spike pre-filter** — three rapid ADC reads per sample; the median is passed to the EWMA, making single-sample glitches virtually impossible to propagate
 - **EWMA filter** — exponential weighted moving average (α = 2/(N+1), N = 60 default) for smooth readings
 - **60-minute history ring buffer** — 12 readings, one per publish cycle; publishes `hour_avg`, `hour_min`, `hour_max`
-- **Dual-core with single-core fallback** — Core 0 owns sampling and display; Core 1 owns WiFi/MQTT; falls back to single-core automatically if `_thread` is unavailable
+- **Persistent MQTT connection** — stays connected continuously so commands are received within one sample interval (~10 s)
 - **OTA runtime config** — publish interval, EWMA window, and trend threshold all tunable live via MQTT without reflashing
 - **Remote commands** — reboot, calibrate, NVM reset, diagnostic publish — all via HA MQTT buttons
 - **NVM persistence** — calibration baseline, observed min/max, and config survive reboots
@@ -196,8 +196,7 @@ The on-board NeoPixel gives at-a-glance status without needing to read the displ
 
 | Colour | Meaning |
 |--------|---------|
-| Amber | Warming up or actively publishing |
-| Blue | Publish in flight (dual-core mode) |
+| Amber | Warming up |
 | Green | Last publish successful |
 | Red | MQTT failure or error |
 
@@ -393,8 +392,8 @@ Connecting to WiFi...
 Connected  IP: 192.168.1.x
 NTP synced
 MQTT connecting...
+MQTT connected
 Boot publish  raw=13100  reset_reason=Power On
-Dual-core: Core 1 started
 ```
 
 **Warmup** (every 10 s):

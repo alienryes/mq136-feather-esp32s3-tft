@@ -140,13 +140,11 @@ The 240×135 IPS TFT is divided into seven zones:
 +--------------------------------------+
 |  MQ-136  H2S             12:34:56    |   <- title / NTP clock
 +--------------------------------------+
-|  14823              D:+1823          |   <- raw ADC (large) / delta
-|  raw ADC                             |
+|  14823              Δ:+1823          |   <- raw ADC (large) / delta
 |  Avg:13201          RSSI:-65dBm      |   <- hourly avg / RSSI
 +--------------------------------------+
 |  [  |  |  || |||||||||||||||||||||]  |
 |  [  |  |  || |||||||||||||||||||||]  |   <- sparkline (12 cols)
-|  [  |  |  || |||||||||||||||||||||]  |
 |  . . . . . . . . . . . . . . . . .   |   <- calibrated baseline
 |  [  |  |  || |||||||||||||||||||||]  |
 +--------------------------------------+
@@ -158,9 +156,8 @@ The 240×135 IPS TFT is divided into seven zones:
 |------|----------|
 | Title row | Device name + NTP clock (UTC) |
 | Row 2 | Raw EWMA ADC value (large, colour-coded) + Δ from baseline |
-| Row 3 | `raw ADC` caption |
-| Row 4 | Hourly average + WiFi RSSI (colour-coded by signal strength) |
-| Sparkline | 12 hourly columns, oldest left → newest right; dashed line = calibrated baseline |
+| Row 3 | Hourly average + WiFi RSSI (colour-coded by signal strength) |
+| Sparkline | 12 hourly columns, oldest left → newest right; grey line = calibrated baseline |
 | Bottom row | Trend (Rising / Falling / Stable) + publish countdown |
 
 ### Raw ADC value
@@ -176,7 +173,7 @@ Mean of the last 60 minutes of readings. Appears from the second publish cycle o
 Current WiFi signal strength, displayed as `RSSI:-67dBm`: green ≥ −67 dBm, amber ≥ −80 dBm, red below −80 dBm. Updated every sample interval from the first sample — visible during warm-up.
 
 ### Sparkline
-232×44 px graph showing the last 12 publish-cycle readings (oldest left, newest right). Each column is 19px wide with a 1px gap. Appears from the **second publish onwards** (~10 minutes after warm-up at the default 5-minute interval); the area is blank until then. Features:
+232×40 px graph showing the last 12 publish-cycle readings (oldest left, newest right). Each column is 19px wide with a 1px gap. Appears from the **second publish onwards** (~10 minutes after warm-up at the default 5-minute interval); the area is blank until then. Features:
 - **Colour per column** — same green/amber/red scheme as delta, applied individually to each bar
 - **White cap** on top of each column to mark the peak clearly
 - **Grey horizontal baseline reference line** across the full width when a calibration baseline is set
@@ -285,7 +282,7 @@ With MQTT auto-discovery enabled (the default in modern HA), the device appears 
 |--------|------|-------|
 | MQ-136 Raw ADC | Measurement | Integer EWMA ADC count |
 | MQ-136 Trend | Text | Rising / Falling / Stable |
-| MQ-136 Delta | Measurement | Raw minus baseline; absent until calibrated |
+| MQ-136 Delta | Measurement | Raw minus baseline; shows 0 until calibrated |
 | MQ-136 Hourly Average | Measurement | Mean over last 60 minutes |
 | MQ-136 Hourly Min | Measurement | Minimum over last 60 minutes |
 | MQ-136 Hourly Max | Measurement | Maximum over last 60 minutes |
@@ -410,8 +407,7 @@ raw=14823  lo=12950  hi=14823  status=OK  trend=Stable  delta=1823
 **Each publish** (every 5 min):
 ```
 Hourly  avg=13201  min=12950  max=14823
-Publish queued  raw=14823  trend=Stable  rssi=-65 dBm
-MQTT published and disconnected
+Published  raw=14823  trend=Stable  rssi=-65 dBm
 ```
 
 **Remote commands:**

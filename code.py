@@ -131,7 +131,7 @@ TFT_HEIGHT = 135
 SPARK_X = 4             # sparkline left margin
 SPARK_Y = 72            # sparkline top (just below divider line 2)
 SPARK_W = 232           # sparkline pixel width
-SPARK_H = 44            # sparkline pixel height (down to y=112, leaving label row)
+SPARK_H = 40            # sparkline pixel height (bottom at y=111, leaving label row)
 SPARK_COLS = 12         # one column per hourly reading slot
 SPARK_COL_W = SPARK_W // SPARK_COLS   # 19px per column
 SPARK_MIN_SPREAD = 100  # minimum value spread before scaling activates
@@ -250,22 +250,22 @@ def build_discovery_topics():
         "MQ-136 Trend", "trend", "{{ value_json.trend }}", "mdi:trending-up",
     )
     topics["homeassistant/sensor/mq136_delta/config"] = _sensor_discovery(
-        "MQ-136 Delta", "delta", "{{ value_json.delta | int(0) }}", "mdi:delta",
+        "MQ-136 Delta", "delta", "{{ value_json.delta | default(0) | int(0) }}", "mdi:delta",
         {"state_class": "measurement"},
     )
     topics["homeassistant/sensor/mq136_hour_avg/config"] = _sensor_discovery(
         "MQ-136 Hourly Average", "hour_avg",
-        "{{ value_json.hour_avg | int(0) }}", "mdi:chart-timeline-variant",
+        "{{ value_json.hour_avg | default(0) | int(0) }}", "mdi:chart-timeline-variant",
         {"state_class": "measurement"},
     )
     topics["homeassistant/sensor/mq136_hour_min/config"] = _sensor_discovery(
         "MQ-136 Hourly Min", "hour_min",
-        "{{ value_json.hour_min | int(0) }}", "mdi:chart-timeline-variant",
+        "{{ value_json.hour_min | default(0) | int(0) }}", "mdi:chart-timeline-variant",
         {"state_class": "measurement"},
     )
     topics["homeassistant/sensor/mq136_hour_max/config"] = _sensor_discovery(
         "MQ-136 Hourly Max", "hour_max",
-        "{{ value_json.hour_max | int(0) }}", "mdi:chart-timeline-variant",
+        "{{ value_json.hour_max | default(0) | int(0) }}", "mdi:chart-timeline-variant",
         {"state_class": "measurement"},
     )
     topics["homeassistant/sensor/mq136_status/config"] = _sensor_discovery(
@@ -562,10 +562,10 @@ def _hline_bitmap(width, colour_idx=6):
 #  y=  8  MQ-136  H2S              12:34:56
 #  y= 20  ──────────────────────────────────
 #  y= 38  14823 (×2)                D:+1823
-#  y= 55  Avg:13201          RSSI:-67dBm
-#  y= 66  ──────────────────────────────────
-#  y= 68  sparkline (232×44px, 12 columns)
-#  y=117  Trend: Rising       Nxt Pub:4m32s
+#  y= 60  Avg:13201          RSSI:-67dBm
+#  y= 70  ──────────────────────────────────
+#  y= 72  sparkline (232×40px, 12 columns) → bottom y=111
+#  y=124  Trend: Rising       Nxt Pub:4m32s
 # ---------------------------------------------------------------------------
 
 splash = displayio.Group()
@@ -590,9 +590,6 @@ _lbl_raw = label.Label(
     terminalio.FONT, text="------", color=COL_BLUE, x=4, y=38, scale=2,
 )
 splash.append(_lbl_raw)
-splash.append(label.Label(
-    terminalio.FONT, text="raw ADC", color=COL_GREY, x=4, y=50,
-))
 _lbl_delta = label.Label(
     _FONT_DELTA, text="\u0394: ------", color=COL_GREY, x=148, y=38,
 )
@@ -619,9 +616,9 @@ _spark_bm.fill(0)
 splash.append(displayio.TileGrid(_spark_bm, pixel_shader=_pal, x=SPARK_X, y=SPARK_Y))
 
 # Trend (left) + publish countdown (right)
-_lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=4, y=117)
+_lbl_trend = label.Label(terminalio.FONT, text="Trend: ---", color=COL_GREY, x=4, y=124)
 splash.append(_lbl_trend)
-_lbl_next = label.Label(terminalio.FONT, text="Nxt Pub: --:--", color=COL_GREY, x=140, y=117)
+_lbl_next = label.Label(terminalio.FONT, text="Nxt Pub: --:--", color=COL_GREY, x=140, y=124)
 splash.append(_lbl_next)
 
 display.root_group = splash
@@ -953,7 +950,7 @@ def _mqtt_poll():
     if not _mqtt_connected:
         return
     try:
-        mqtt_client.loop(timeout=0)
+        mqtt_client.loop(timeout=1)
     except Exception as exc:
         print("MQTT poll error:", exc)
         _mqtt_connected = False

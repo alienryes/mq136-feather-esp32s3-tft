@@ -1,5 +1,7 @@
 [flake8]
 max-line-length = 100
+extend-select = B,B9,A
+inline-quotes = double
 # E402: supervisor.runtime.autoreload must be set before other imports in CircuitPython
 per-file-ignores =
-    code.py: E402
+    code.py: E402,A005

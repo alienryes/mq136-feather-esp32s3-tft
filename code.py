@@ -73,7 +73,7 @@ import adafruit_minimqtt.adafruit_minimqtt as MQTT
 # Firmware version
 # ---------------------------------------------------------------------------
 
-FIRMWARE_VERSION = "1.0.1"
+FIRMWARE_VERSION = "1.0.2"
 
 # ---------------------------------------------------------------------------
 # Reset reason — captured once at boot before anything can change it
@@ -166,8 +166,8 @@ NEOPIXEL_BRIGHTNESS = 0.15
 #   [15:17] ewma_n            big-endian uint16
 #   [17:20] reserved (zeroed)
 
-_NVM_MAGIC = b'\xa5\x5a'
-_NVM_CFG_MAGIC = b'\xc0\xde'
+_NVM_MAGIC = b"\xa5\x5a"
+_NVM_CFG_MAGIC = b"\xc0\xde"
 _NVM_SENSOR_SIZE = 9
 _NVM_CFG_OFFSET = 9
 _NVM_CFG_SIZE = 11   # magic(2) + publish_interval(2) + trend_threshold(2) + ewma_n(2) + reserved(3)
@@ -470,7 +470,7 @@ def _nvm_write_sensor():
 
 def _nvm_write_config():
     cfg = _NVM_CFG_MAGIC + struct.pack(">HHH", publish_interval, trend_threshold, ewma_n)
-    cfg += b'\x00' * 3
+    cfg += b"\x00" * 3
     microcontroller.nvm[_NVM_CFG_OFFSET:_NVM_CFG_OFFSET + _NVM_CFG_SIZE] = cfg
     print("NVM config saved  interval=" + str(publish_interval)
           + "  threshold=" + str(trend_threshold)
@@ -478,8 +478,8 @@ def _nvm_write_config():
 
 
 def nvm_reset_all():
-    microcontroller.nvm[0:2] = b'\x00\x00'
-    microcontroller.nvm[_NVM_CFG_OFFSET:_NVM_CFG_OFFSET + 2] = b'\x00\x00'
+    microcontroller.nvm[0:2] = b"\x00\x00"
+    microcontroller.nvm[_NVM_CFG_OFFSET:_NVM_CFG_OFFSET + 2] = b"\x00\x00"
     print("NVM reset")
 
 
